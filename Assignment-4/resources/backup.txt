@@ -1,0 +1,191 @@
+/* Christopher Hardy
+ * gcc project.c -o project.exe -pthread
+ * ./project.exe
+ * 
+*/ 
+#include <fcntl.h>
+#include <ctype.h>
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h> 
+#include <string.h>
+#include <unistd.h>
+#include <math.h>
+#define FILE_SIZE 10000  // integers in FILE file
+#define C_THREADS 10     // number of child threads
+#define GC_THREADS 3     // number of grandchild threads
+
+// FUNCTION DECLARATIONS 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+int read_from_file(FILE*, int*);  // reads from selected file and puts contents into an integer array.
+int *mallocArray;
+
+void* worker_threads(void*);      // thread funtion
+void* arithmetic_avreage_thread(void*);
+void* adder_thread(void*);      // thread funtion
+void* root_of_sum_of_squares_thread(void*);
+int find_min_value(int*);
+void print_file(int*);       // prints array of integers to console.
+void print_thread();              // test output
+void write_to_file(int*, int*, int*);
+// MAIN THREAD                            ***RENAME_VARIABLES***
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+int main(int argc, char* argv[]) { 
+  FILE* file = fopen("INPUT.txt", "r");  // open file (initialize & declare file decriptor).
+  mallocArray = (int*)malloc(sizeof(int)*GC_THREADS);
+  // (inpArray) stores contents of INPUT.txt, (results) to store return values from threads, arrays to store results
+  int inpArray[FILE_SIZE], *results;
+  int aveArray[C_THREADS], sumArray[C_THREADS], rssArray[C_THREADS];
+  read_from_file(file, inpArray);  // read from file (declares inpArray).
+
+  pthread_t thread_id[C_THREADS];  // array of thread IDs to store the 10 worker threads ids
+  for(int i=0; i < C_THREADS; i++) { // loop to create 10 worker threads.
+    pthread_create(&thread_id[i], NULL, worker_threads, &inpArray[(FILE_SIZE/C_THREADS)*i]);  // worker_thread creation
+    pthread_join(thread_id[i],(void**) &results); // Each of the 10 worker thread returns an array of results(results).
+    aveArray[i] = results[0];   // results[0] is stored in an array of 10 arithmetic averages
+    sumArray[i] = results[1];   // results[1] is stored in an array of 10 sums
+    rssArray[i] = results[2];   // results[2] is stored in an array of 10 roots of sums of squares
+  } 
+  write_to_file(aveArray, sumArray, rssArray); // Produces the output file
+  free(mallocArray);  // Free dynamically allocated memory.
+  printf("%s", "\n\n"); // End of the output.
+  return 0; // Exit the main thread.
+}
+
+// CHILD THREAD FUNCTIONS 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+void* worker_threads(void* arg){
+  int *array = (int *)arg;; // Stores the arguments passed from pthread_create().
+  int *average, *sum, *rss; // Variables to store the results of the computation threads.
+  int results[GC_THREADS];  // An array that will be used to return results back to the main thread.
+  // print_thread(array);
+  pthread_t comp_thread_id[GC_THREADS];  // array of 3 thread IDs for computation threads.
+  pthread_create(&comp_thread_id[0], NULL, arithmetic_avreage_thread, arg);  // Creates thread for aritmetic average.
+  pthread_create(&comp_thread_id[1], NULL, adder_thread, arg);  // Creates thread for sum.
+  pthread_create(&comp_thread_id[2], NULL, root_of_sum_of_squares_thread, arg);  // Creates thread for root sum squares.
+  
+  pthread_join(comp_thread_id[0], (void**) &results[0]); // thread joins 
+  pthread_join(comp_thread_id[1], (void**) &results[1]); // thread joins
+  pthread_join(comp_thread_id[2], (void**) &results[2]); // thread joins
+  // results[0]  = *average;
+  // results[1] = *sum;
+  // results[2] = *rss;
+  *mallocArray = *results;
+  return (void*) mallocArray;
+  pthread_exit(0); // wait()
+}
+
+// GRAND CHILD THREAD FUNCTIONS 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+void* arithmetic_avreage_thread(void* arg){
+  int *array = (int *)arg;
+  int* ret = malloc(sizeof(int));
+  int sum = 0, n = 2, average;
+
+  for(int i = 0; i < FILE_SIZE/C_THREADS; i++){
+    sum += array[i];
+  }
+  average = sum / n;
+  mallocArray[0] = average;
+  return (void*) (mallocArray);
+  pthread_exit(0); // wait()
+}
+void* adder_thread(void* arg){
+  int *array = (int *)arg;
+  int sum = 0;
+  for(int i = 0; i < FILE_SIZE/C_THREADS; i++)
+    sum += array[i];
+  mallocArray[1] = sum;
+  return (void*) (mallocArray+1);
+  pthread_exit(0); // wait()
+}
+void* root_of_sum_of_squares_thread(void* arg){
+  int *array = (int *)arg;
+  int sum = 0, product = 1;
+  int rss;
+  for(int i = 0; i < FILE_SIZE/C_THREADS; i++){
+    sum += array[i] * array[i];
+  }
+  rss = sqrt(sum);
+  mallocArray[2] = (int)rss;
+  return (void*) (mallocArray+2);
+  pthread_exit(0); // wait()
+}
+
+// AUXILIARY FUNCTIONTIONS 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+void write_to_file(int* aveArray, int* sumArray, int* rssArray){
+  int file = open("OUTPUT.txt", O_RDWR);  // open file (initialize & declare file decriptor).
+  // --ThreadIDs  
+  // --ARITHMETIC_AVERAGE
+  
+  char threadNumChar[100], aveChar[100], sumChar[100], rssChar[100];
+  char minAveChar[100], minSumChar[100], minRssChar[100];
+  for(int i = 0; i < C_THREADS; i++){
+    printf("ARITHMETIC_AVERAGE = %d\n", aveArray[i]);
+    printf("SUM = %d\n", sumArray[i]);
+    printf(" ROOT_SUM_SQUARES = %d\n", rssArray[i]);
+    sprintf(threadNumChar, "THREAD_NUMBER = %d :\t", i);
+    sprintf(aveChar, "ARITHMETIC_AVERAGE = %d\t", aveArray[i]);
+    sprintf(sumChar, "SUM = %d\t", sumArray[i]);
+    sprintf(rssChar, "ROOT_SUM_SQUARES = %d\n", rssArray[i]);
+    write(file, threadNumChar, strlen(threadNumChar)); 
+    write(file, aveChar, strlen(aveChar)); 
+    write(file, sumChar, strlen(sumChar));
+    write(file, rssChar, strlen(rssChar));
+  }
+  
+  int minAve = find_min_value(aveArray);
+  int minSum = find_min_value(sumArray);
+  int minRss = find_min_value(rssArray);
+
+
+  sprintf(minAveChar, "MIN_ARITHMETIC_AVERAGE  = %d\n", minAve);
+  sprintf(minSumChar, "MIN_SUM = %d\n", minSum);
+  sprintf(minRssChar, "MIN_OF_ROOT_SUM_SQUARES = %d\n", minRss);
+  write(file, minAveChar, strlen(minAveChar)); 
+  write(file, minSumChar, strlen(minSumChar));
+  write(file, minRssChar, strlen(minRssChar));
+}
+int find_min_value(int* array){
+  int minValue = array[0];
+  for(int i = 1; i < C_THREADS; i++){
+    if(array[i] < minValue) minValue = array[i];
+  }
+  return minValue;
+}
+int read_from_file(FILE* file, int* array){  
+  for(int i = 0; i < FILE_SIZE; i++){
+    fscanf(file, "%i", array + i);
+  }
+  return 1; // return integer for no reason
+}
+void print_file(int* array){
+  for(int i = 0, j = 0; i < FILE_SIZE; i++, j++){
+    if(j%10 == 0) printf("%c", '\n');
+    printf("%i", array[i]);
+    printf("%c", ' ');
+  }
+}
+void print_thread(int* array){
+char output[10];
+  for(int i = 0, j = 0; i < FILE_SIZE; i++, j++){
+    if(j%10 == 0) printf("%c", '\n');
+    sprintf(output, "%d", array[i]);
+    
+    write(STDOUT_FILENO, &output, sizeof(int));
+    printf("%c", ' ');
+  } 
+  // printf("Thread number %ld\n", pthread_self());
+  
+
+}
+
+// write(STDOUT_FILENO, newlines_string, sizeof(newlines_string));
+// write(STDOUT_FILENO, "\n", 1); 
+// write(STDOUT_FILENO, words_string, sizeof(words_string));
+ 
+
+
+
